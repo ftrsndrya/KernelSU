@@ -1,0 +1,90 @@
+name: Seed Management
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+  push:
+    branches: [non-gki]
+  pull_request:
+    branches: [non-gki]
+
+jobs:
+  super-lint:
+    name: Lint code base
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Run Super-Linter
+        uses: super-linter/super-linter@v4
+        env:
+          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: non-gki
+          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+
+      - name: Create Pull Request to fix linting errors
+        uses: peter-evans/create-pull-request@v4
+        if: failure() && github.event_name == 'push'
+        with:
+          commit-message: "Fix linting errors"
+          title: "Fix linting errors"
+          branch: "lint-fixes"
+          body: "This pull request fixes linting errors found by Super-Linter."
+
+  notify:
+    name: Notify on Telegram
+    needs: super-lint
+    if: failure() && (github.event_name == 'schedule' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Telegram Notification
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ${{ format('Super-Linter found {0} errors in the KernelSU repository (branch non-gki) on {1}. Please check the latest workflow run for details.', 
+                        github.event.outputs.total_errors, github.event.head_commit.timestamp) }}
+  auto-merge:
+    name: Auto-merge Pull Requests
+    needs: super-lint
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]' && contains(github.head_ref, 'dependabot')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge
+        run: gh pr merge --auto --squash ${{ github.event.pull_request.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+
+  label_enhancements:
+    name: Label Enhancements
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Labeler
+        uses: actions/labeler@v4
+        with:
+          repo-token: "${{ secrets.GIT_TOKEN }}"
+          configuration-path: ".github/labeler.yml"  
+
+  comment_reminder:
+    name: Comment Reminder
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issue' && github.event.action == 'opened'
+    steps:
+      - name: Comment on new issue
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GIT_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "Thank you for opening this issue! Please provide detailed information regarding the problem you are experiencing. We will approve your report immediately."
+            })
