@@ -1,0 +1,17 @@
+ Configuration for actions/labeler
+label-pr-types:
+  - "feature": "enhancement"
+  - "bugfix": "bug"
+  - "chore": "chore"
+  - "docs": "documentation"
+  - "refactor": "refactor"
+  - "test": "test"
+
+label-pr-paths:
+  - "drivers/**": "driver"
+  - "arch/**": "architecture"
+  - "Documentation/**": "documentation"
+
+label-pr-branches:
+  - "main": "main"
+  - "non-gki": "non-gki"
